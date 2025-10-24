@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Color Catch Duel – AI Fun Edition</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@500&display=swap');
+  html,body{margin:0;padding:0;overflow:hidden;height:100%;background:#000;}
+  body{font-family:'Poppins',sans-serif;color:#fff;}
+
+  /* Dynamic AI light background */
+  #gameContainer{
+    width:100%;height:100vh;position:relative;overflow:hidden;
+    background:radial-gradient(circle at 30% 30%,#111,#000);
+    animation:glowBG 10s ease-in-out infinite alternate;
+  }
+  @keyframes glowBG{
+    0%{background:radial-gradient(circle at 20% 20%,#0ff,#002);}
+    50%{background:radial-gradient(circle at 80% 60%,#f0f,#111);}
+    100%{background:radial-gradient(circle at 50% 50%,#ff0,#001);}
+  }
+
+  #basket{
+    position:absolute;bottom:8%;left:50%;width:90px;height:45px;
+    background:linear-gradient(to top,#00ffff55,#ffffff22);
+    border:2px solid rgba(255,255,255,0.3);
+    border-radius:25px;backdrop-filter:blur(6px);
+    transform:translateX(-50%);
+    box-shadow:0 0 25px #00ffff55 inset,0 0 20px #00ffff55;
+  }
+
+  #face{
+    position:absolute;bottom:calc(8% + 50px);left:50%;
+    transform:translateX(-50%);
+    font-size:32px;pointer-events:none;
+    transition:transform .2s;
+  }
+
+  .ball{
+    position:absolute;width:35px;height:35px;border-radius:50%;
+    background:radial-gradient(circle at 30% 30%,#fff,var(--clr));
+    box-shadow:0 0 15px var(--clr);
+  }
+
+  #ui{position:absolute;top:10px;left:0;width:100%;text-align:center;font-size:18px;z-index:5;}
+  #targetCircle{display:inline-block;width:22px;height:22px;border-radius:50%;vertical-align:middle;margin:0 5px;box-shadow:0 0 10px currentColor;}
+  button{
+    background:linear-gradient(90deg,#00f260,#0575E6);
+    border:none;border-radius:25px;padding:12px 28px;
+    color:#fff;font-size:18px;cursor:pointer;
+    margin-top:20px;transition:transform .3s;
+  }
+  button:hover{transform:scale(1.1);}
+  #startScreen,#gameOverScreen{
+    position:absolute;top:0;left:0;width:100%;height:100%;
+    display:flex;flex-direction:column;justify-content:center;align-items:center;
+    background:rgba(0,0,0,0.7);backdrop-filter:blur(10px);z-index:10;
+  }
+
+  /* Emoji particles */
+  .emoji{
+    position:absolute;font-size:22px;animation:floatUp 1s ease-out forwards;
+  }
+  @keyframes floatUp{
+    0%{opacity:1;transform:translateY(0);}
+    100%{opacity:0;transform:translateY(-60px) scale(1.2);}
+  }
+</style>
+</head>
+<body>
+  <div id="gameContainer">
+    <div id="ui">
+      🎯 Target: <span id="targetCircle"></span><span id="targetName"></span> |
+      🏆 Score: <span id="score">0</span> | ❤️ Lives: <span id="lives">3</span>
+    </div>
+    <div id="basket"></div>
+    <div id="face">😃</div>
+
+    <div id="startScreen">
+      <h1>Color Catch Duel – AI Fun Edition</h1>
+      <button id="startBtn">Play</button>
+    </div>
+    <div id="gameOverScreen" style="display:none;">
+      <h1>Game Over 💀</h1>
+      <p>Your Score: <span id="finalScore"></span></p>
+      <button id="restartBtn">Restart</button>
+    </div>
+  </div>
+
+  <!-- Sounds -->
+  <audio id="bgMusic" src="https://cdn.pixabay.com/download/audio/2022/03/15/audio_3de1a5e4a7.mp3?filename=cyberpunk-street-ambient-112199.mp3" loop></audio>
+  <audio id="catchSound" src="https://cdn.pixabay.com/download/audio/2021/09/30/audio_8d1a2675b7.mp3?filename=correct-2-46134.mp3"></audio>
+  <audio id="missSound" src="https://cdn.pixabay.com/download/audio/2021/09/30/audio_8d1a2675b7.mp3?filename=wrong-answer-126515.mp3"></audio>
+
+<script>
+const container=document.getElementById('gameContainer');
+const basket=document.getElementById('basket');
+const face=document.getElementById('face');
+const scoreEl=document.getElementById('score');
+const livesEl=document.getElementById('lives');
+const targetCircle=document.getElementById('targetCircle');
+const targetName=document.getElementById('targetName');
+const startScreen=document.getElementById('startScreen');
+const gameOverScreen=document.getElementById('gameOverScreen');
+const finalScore=document.getElementById('finalScore');
+const bgMusic=document.getElementById('bgMusic');
+const catchSound=document.getElementById('catchSound');
+const missSound=document.getElementById('missSound');
+
+const colors=[
+  {name:'Cyan',code:'#00ffff'},
+  {name:'Magenta',code:'#ff00ff'},
+  {name:'Yellow',code:'#ffff00'},
+  {name:'Lime',code:'#00ff00'},
+  {name:'Red',code:'#ff4444'},
+  {name:'Blue',code:'#0088ff'}
+];
+
+let score=0,lives=3,speed=2,gameRunning=false;
+let targetColor,spawnInt,loopId;
+let targetX=window.innerWidth/2,currentX=targetX;
+
+/* ===== Utility ===== */
+function setTargetColor(){
+  targetColor=colors[Math.floor(Math.random()*colors.length)];
+  targetCircle.style.background=targetColor.code;
+  targetCircle.style.color=targetColor.code;
+  targetName.textContent=targetColor.name;
+}
+
+/* === Start Game === */
+function startGame(){
+  startScreen.style.display='none';
+  gameOverScreen.style.display='none';
+  score=0;lives=3;speed=2;
+  scoreEl.textContent=score;livesEl.textContent=lives;
+  bgMusic.currentTime=0;bgMusic.play();
+  setTargetColor();gameRunning=true;
+  spawnInt=setInterval(spawnBall,900);
+  loopId=requestAnimationFrame(gameLoop);
+}
+
+/* === Spawn Balls === */
+function spawnBall(){
+  if(!gameRunning)return;
+  const b=document.createElement('div');
+  b.classList.add('ball');
+  const clr=colors[Math.floor(Math.random()*colors.length)];
+  b.style.setProperty('--clr',clr.code);
+  b.dataset.name=clr.name;
+  b.style.left=Math.random()*(container.clientWidth-35)+'px';
+  b.style.top='0px';
+  container.appendChild(b);
+}
+
+/* === Particle Emojis === */
+function emitEmoji(emoji,x,y){
+  const e=document.createElement('div');
+  e.classList.add('emoji');
+  e.style.left=x+'px';e.style.top=y+'px';
+  e.textContent=emoji;
+  container.appendChild(e);
+  setTimeout(()=>e.remove(),1000);
+}
+
+/* === Main Game Loop === */
+function gameLoop(){
+  if(!gameRunning)return;
+  document.querySelectorAll('.ball').forEach(ball=>{
+    let t=parseFloat(ball.style.top);t+=speed;ball.style.top=t+'px';
+    const br=ball.getBoundingClientRect();
+    const cr=basket.getBoundingClientRect();
+    if(br.bottom>=cr.top&&br.left<cr.right&&br.right>cr.left&&br.bottom<=cr.bottom+25){
+      if(ball.dataset.name===targetColor.name){
+        score++;catchSound.play();face.textContent='😎';
+        emitEmoji('⭐',br.left,br.top);
+        scoreEl.textContent=score;
+        setTimeout(()=>face.textContent='😃',400);
+        if(score%5===0)speed+=0.3;
+        if(score%10===0)setTargetColor();
+      }else{
+        lives--;missSound.play();face.textContent='😵';
+        emitEmoji('💥',br.left,br.top);
+        livesEl.textContent=lives;
+        setTimeout(()=>face.textContent='😐',600);
+        if(lives<=0)endGame();
+      }
+      ball.remove();
+    }
+    if(t>container.clientHeight)ball.remove();
+  });
+  // smooth basket motion
+  currentX+=(targetX-currentX)*0.25;
+  basket.style.left=(currentX-basket.offsetWidth/2)+'px';
+  face.style.left=currentX+'px';
+  loopId=requestAnimationFrame(gameLoop);
+}
+
+/* === End Game === */
+function endGame(){
+  gameRunning=false;
+  clearInterval(spawnInt);
+  cancelAnimationFrame(loopId);
+  bgMusic.pause();
+  finalScore.textContent=score;
+  gameOverScreen.style.display='flex';
+  face.textContent='😢';
+}
+
+/* === Input Control === */
+document.addEventListener('mousemove',e=>{if(gameRunning)targetX=e.clientX;});
+container.addEventListener('touchmove',e=>{
+  if(gameRunning)targetX=e.touches[0].clientX;
+});
+
+/* === Buttons === */
+document.getElementById('startBtn').onclick=startGame;
+document.getElementById('restartBtn').onclick=startGame;
+</script>
+</body>
+</html>
